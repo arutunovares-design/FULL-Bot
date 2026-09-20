@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -20,6 +20,8 @@ ADMIN_CHAT_ID = -5230412814
 LEADER_IDS = [8588786035]
 CO_LEADER_IDS = [5881764705]
 FAN_IDS = [1812755802]
+
+ADMIN_IDS = LEADER_IDS + CO_LEADER_IDS + FAN_IDS
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -70,18 +72,22 @@ class JoinClanForm(StatesGroup):
 
 
 # ======== 3. ГЛАВНОЕ МЕНЮ И START ==========
-def get_main_keyboard():
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⚔️ Состав / Моя карточка", callback_data="btn_inside"),
-                InlineKeyboardButton(text="📊 Статистика", callback_data="btn_player_stats")
-            ],
-            [
-                InlineKeyboardButton(text="📝 Вступить в клан", callback_data="btn_join_clan")
-            ]
+def get_main_keyboard(user_id: int):
+    buttons = [
+        [
+            InlineKeyboardButton(text="⚔️ Состав / Моя карточка", callback_data="btn_inside"),
+            InlineKeyboardButton(text="📊 Статистика", callback_data="btn_player_stats")
+        ],
+        [
+            InlineKeyboardButton(text="📝 Вступить в клан", callback_data="btn_join_clan")
         ]
-    )
+    ]
+    
+    # Если зашел Лидер / Зам / Талисман — добавляем кнопку Админки
+    if user_id in ADMIN_IDS:
+        buttons.append([InlineKeyboardButton(text="⚙️ Админ-панель", callback_data="btn_admin_panel")])
+        
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 @dp.message(Command("start"))
 async def start_handler(message: types.Message, state: FSMContext):
@@ -89,7 +95,7 @@ async def start_handler(message: types.Message, state: FSMContext):
     await message.answer(
         "👋 <b>Приветствуем в официальном боте клана FULL•SQUAD!</b>\n\n"
         "Выбери нужный раздел в меню ниже:",
-        reply_markup=get_main_keyboard(),
+        reply_markup=get_main_keyboard(message.from_user.id),
         parse_mode="HTML"
     )
 
@@ -344,13 +350,8 @@ async def process_fav_gun(message: types.Message, state: FSMContext):
 
 
 # ======== 8. АДМИН-ПАНЕЛЬ И КОМАНДЫ ==========
-@dp.message(Command("admin"))
-async def admin_panel(message: types.Message):
-    user_id = message.from_user.id
-    if user_id not in LEADER_IDS and user_id not in CO_LEADER_IDS and user_id not in FAN_IDS:
-        await message.answer("❌ У тебя нет доступа к админ-панели.")
-        return
 
+async def send_admin_info(message_or_callback):
     conn = sqlite3.connect("clan_members.db")
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
@@ -363,13 +364,35 @@ async def admin_panel(message: types.Message):
     text = f"⚙️ <b>АДМИН-ПАНЕЛЬ FULL•SQUAD</b>\n\n👥 Всего в базе: <b>{total_users}</b>\n\n<b>Последние записи:</b>\n"
     for m in members:
         text += f"• ID: <code>{m[0]}</code> | Ник: {m[1]} | Доверие: {m[2]}/5\n"
-    text += "\n<i>Команды:</i>\n<code>/set_trust TG_ID LEVEL</code> — изменить trust\n<code>/broadcast ТЕКСТ</code> — рассылка всем"
-    await message.answer(text, parse_mode="HTML")
+    text += (
+        "\n<b>Доступные команды:</b>\n"
+        "1️⃣ Изменить доверие:\n<code>/set_trust TG_ID LEVEL</code> (Пример: <code>/set_trust 8588786035 5</code>)\n\n"
+        "2️⃣ Сделать рассылкувсем:\n<code>/broadcast ТЕКСТ</code> (Пример: <code>/broadcast Важное объявление!</code>)"
+    )
+
+    if isinstance(message_or_callback, types.CallbackQuery):
+        await message_or_callback.message.answer(text, parse_mode="HTML")
+    else:
+        await message_or_callback.answer(text, parse_mode="HTML")
+
+@dp.callback_query(F.data == "btn_admin_panel")
+async def process_admin_callback(callback: types.CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Нет доступа!", show_alert=True)
+        return
+    await callback.answer()
+    await send_admin_info(callback)
+
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ У тебя нет доступа к админ-панели.")
+        return
+    await send_admin_info(message)
 
 @dp.message(Command("set_trust"))
 async def set_trust_level(message: types.Message):
-    user_id = message.from_user.id
-    if user_id not in LEADER_IDS and user_id not in CO_LEADER_IDS and user_id not in FAN_IDS:
+    if message.from_user.id not in ADMIN_IDS:
         await message.answer("❌ У тебя нет прав для изменения уровня доверия.")
         return
 
@@ -390,8 +413,7 @@ async def set_trust_level(message: types.Message):
 
 @dp.message(Command("broadcast"))
 async def broadcast_message(message: types.Message):
-    user_id = message.from_user.id
-    if user_id not in LEADER_IDS and user_id not in CO_LEADER_IDS and user_id not in FAN_IDS:
+    if message.from_user.id not in ADMIN_IDS:
         await message.answer("❌ У тебя нет прав для создания рассылки.")
         return
 
@@ -418,7 +440,7 @@ async def broadcast_message(message: types.Message):
     await message.answer(f"📊 <b>Рассылка завершена!</b>\n✔️ Успешно: {success}\n❌ Не доставлено: {failed}", parse_mode="HTML")
 
 
-# ======== 9. ОБЩИЙ ЭХО-ХЭНДЛЕР (Самый последний) ==========
+# ======== 9. ОБЩИЙ ЭХО-ХЭНДЛЕР ==========
 @dp.message()
 async def echo_handler(message: types.Message):
     await message.answer(f"Принято! Твой текст: {message.text}")
@@ -448,4 +470,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-            
+    
