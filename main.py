@@ -47,7 +47,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Инициализируем БД при старте скрипта
 init_db()
 
 
@@ -70,7 +69,41 @@ class JoinClanForm(StatesGroup):
     waiting_for_about = State()
 
 
-# ======== 3. ХЭНДЛЕРЫ JOINCLANFORM (Заявка в клан) ==========
+# ======== 3. ГЛАВНОЕ МЕНЮ И START ==========
+def get_main_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚔️ Состав / Моя карточка", callback_data="btn_inside"),
+                InlineKeyboardButton(text="📊 Статистика", callback_data="btn_player_stats")
+            ],
+            [
+                InlineKeyboardButton(text="📝 Вступить в клан", callback_data="btn_join_clan")
+            ]
+        ]
+    )
+
+@dp.message(Command("start"))
+async def start_handler(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "👋 <b>Приветствуем в официальном боте клана FULL•SQUAD!</b>\n\n"
+        "Выбери нужный раздел в меню ниже:",
+        reply_markup=get_main_keyboard(),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data == "btn_join_clan")
+async def start_join_clan(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(JoinClanForm.waiting_for_photo)
+    await callback.message.answer(
+        "<b>Шаг 1/7:</b> Отправь скриншот своего профиля из игры Blood Strike:",
+        parse_mode="HTML"
+    )
+
+
+# ======== 4. ХЭНДЛЕРЫ JOINCLANFORM (Заявка в клан) ==========
 @dp.message(JoinClanForm.waiting_for_photo, F.photo)
 async def process_photo(message: types.Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
@@ -149,7 +182,7 @@ async def process_about(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-# ======== 4. ОБРАБОТКА РЕШЕНИЙ АДМИНА ==========
+# ======== 5. ОБРАБОТКА РЕШЕНИЙ АДМИНА ==========
 @dp.callback_query(F.data.startswith("accept_"))
 async def accept_member(callback: types.CallbackQuery):
     applicant_id = int(callback.data.split("_")[1])
@@ -177,7 +210,7 @@ async def reject_member(callback: types.CallbackQuery):
         pass
 
 
-# ======== 5. КНОПКИ МЕНЮ ==========
+# ======== 6. КНОПКИ МЕНЮ ==========
 @dp.callback_query(F.data == "btn_player_stats")
 async def process_statistic(callback: types.CallbackQuery):
     await callback.answer("Сверяюсь с архивами...")
@@ -250,7 +283,7 @@ async def process_inside(callback: types.CallbackQuery, state: FSMContext):
         )
 
 
-# ======== 6. ХЭНДЛЕРЫ MEMBERCARDFORM (Уже в клане) ==========
+# ======== 7. ХЭНДЛЕРЫ MEMBERCARDFORM (Уже в клане) ==========
 @dp.message(MemberCardForm.waiting_for_nick_id)
 async def process_nick_id(message: types.Message, state: FSMContext):
     await state.update_data(nick_id=message.text)
@@ -310,9 +343,7 @@ async def process_fav_gun(message: types.Message, state: FSMContext):
     await message.answer("✅ <b>Твоя карточка успешно сохранена в базе FULL•SQUAD!</b>", parse_mode="HTML")
 
 
-# ======== 7. АДМИН-ПАНЕЛЬ И КОМАНДЫ ==========
-
-# 1. Просмотр участников
+# ======== 8. АДМИН-ПАНЕЛЬ И КОМАНДЫ ==========
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     user_id = message.from_user.id
@@ -335,8 +366,6 @@ async def admin_panel(message: types.Message):
     text += "\n<i>Команды:</i>\n<code>/set_trust TG_ID LEVEL</code> — изменить trust\n<code>/broadcast ТЕКСТ</code> — рассылка всем"
     await message.answer(text, parse_mode="HTML")
 
-
-# 2. Изменение trust_level
 @dp.message(Command("set_trust"))
 async def set_trust_level(message: types.Message):
     user_id = message.from_user.id
@@ -357,10 +386,8 @@ async def set_trust_level(message: types.Message):
 
         await message.answer(f"✔️ Уровень доверия пользователя <code>{target_id}</code> изменен на <b>{new_trust}/5</b>!", parse_mode="HTML")
     except Exception:
-        await message.answer("⚠️ Использование: <code>/set_trust TG_ID LEVEL</code> (например: <code>/set_trust 8588786035 5</code>)", parse_mode="HTML")
+        await message.answer("⚠️ Использование: <code>/set_trust TG_ID LEVEL</code>", parse_mode="HTML")
 
-
-# 3. Рассылка сообщений
 @dp.message(Command("broadcast"))
 async def broadcast_message(message: types.Message):
     user_id = message.from_user.id
@@ -391,13 +418,13 @@ async def broadcast_message(message: types.Message):
     await message.answer(f"📊 <b>Рассылка завершена!</b>\n✔️ Успешно: {success}\n❌ Не доставлено: {failed}", parse_mode="HTML")
 
 
-# ======== 8. ОБЩИЙ ЭХО-ХЭНДЛЕР ==========
+# ======== 9. ОБЩИЙ ЭХО-ХЭНДЛЕР (Самый последний) ==========
 @dp.message()
 async def echo_handler(message: types.Message):
     await message.answer(f"Принято! Твой текст: {message.text}")
 
 
-# ======== 9. ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
+# ======== 10. ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
 async def handle(request):
     return web.Response(text="FULL SQUAD Bot is running!")
 
@@ -411,16 +438,14 @@ async def start_web_server():
     await site.start()
 
 
-# ======== 10. СТАРТ ==========
+# ======== 11. СТАРТ ==========
 async def main():
     logging.basicConfig(level=logging.INFO)
     print("Чем займемся, командир?")
     
-    # Запускаем фоновый веб-сервер, чтобы Render видел открытый порт
     await start_web_server()
-    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+            
