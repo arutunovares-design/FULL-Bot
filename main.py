@@ -83,7 +83,6 @@ def get_main_keyboard(user_id: int):
         ]
     ]
     
-    # Если зашел Лидер / Зам / Талисман — добавляем кнопку Админки
     if user_id in ADMIN_IDS:
         buttons.append([InlineKeyboardButton(text="⚙️ Админ-панель", callback_data="btn_admin_panel")])
         
@@ -367,7 +366,7 @@ async def send_admin_info(message_or_callback):
     text += (
         "\n<b>Доступные команды:</b>\n"
         "1️⃣ Изменить доверие:\n<code>/set_trust TG_ID LEVEL</code> (Пример: <code>/set_trust 8588786035 5</code>)\n\n"
-        "2️⃣ Сделать рассылкувсем:\n<code>/broadcast ТЕКСТ</code> (Пример: <code>/broadcast Важное объявление!</code>)"
+        "2️⃣ Сделать рассылку всем:\n<code>/broadcast ТЕКСТ</code> (Пример: <code>/broadcast Важное объявление!</code>)"
     )
 
     if isinstance(message_or_callback, types.CallbackQuery):
@@ -470,4 +469,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
